@@ -17,6 +17,7 @@ fn main() -> Result<()> {
                 server_root_url: "http://127.0.0.1:9".into(),
                 rtc_server_url: "ws://127.0.0.1:9/graphql/v2".into(),
                 session_sharing_server_url: None,
+                prewarmed_sandbox_control_url: None,
                 firebase_auth_api_key: "".into(),
                 iap_config: None,
             },
