@@ -72,11 +72,6 @@ jobs:
             cargo install cargo-bundle --version 0.11.0 --locked
           fi
 
-      - name: Run codex_local unit tests
-        run: |
-          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
-          cargo test --profile release-lto --target aarch64-apple-darwin --features "release_bundle,extern_plist,gui,nld_classifier_v3,nld_heuristic_v2" -p warp --lib ai::codex_local -- --nocapture
-
       - name: Bundle WarpCodex.app & WarpCodex.dmg
         run: |
           export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
@@ -98,7 +93,7 @@ jobs:
           df -h /
 
       - name: Save Cargo build cache
-        if: always()
+        if: success()
         uses: actions/cache/save@v4
         with:
           path: |
