@@ -74,9 +74,6 @@ jobs:
           fi
 
       - name: Bundle WarpCodex.app & WarpCodex.dmg
-        env:
-          CARGO_PROFILE_RELEASE_LTO_DEBUG: "0"
-          CARGO_PROFILE_RELEASE_LTO_STRIP: "debuginfo"
         run: |
           export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
           NO_LICENSES=1 ./script/bundle --channel oss --arch aarch64 --selfsign

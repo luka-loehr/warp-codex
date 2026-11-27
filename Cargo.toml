@@ -488,6 +488,8 @@ miniz_oxide.opt-level = 3
 [profile.release-lto]
 inherits = "release"
 lto = "thin"
+debug = false
+strip = "debuginfo"
 
 # A shorthand profile for `release-lto`.
 # Windows enforces that any path is a maximum of 255 characters and
