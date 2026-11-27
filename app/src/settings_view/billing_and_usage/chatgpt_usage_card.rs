@@ -24,14 +24,19 @@ pub(crate) fn chatgpt_manage_usage_button() -> ActionButton {
                     url: CHATGPT_USAGE_URL.to_owned(),
                 }));
             } else {
-                ctx.spawn(
-                    async move { crate::ai::codex_local::start_chatgpt_login().await },
-                    |_, res, ctx| {
-                        if let Ok(url) = res {
-                            ctx.open_url(&url);
+                std::thread::Builder::new()
+                    .name("warp-codex-oauth".to_owned())
+                    .spawn(|| {
+                        if let Ok(url) =
+                            futures::executor::block_on(crate::ai::codex_local::start_chatgpt_login())
+                        {
+                            #[cfg(target_os = "macos")]
+                            let _ = std::process::Command::new("/usr/bin/open").arg(&url).spawn();
+                            #[cfg(not(target_os = "macos"))]
+                            let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
                         }
-                    },
-                );
+                    })
+                    .ok();
             }
         })
 }

@@ -21,9 +21,7 @@ use warp_multi_agent_api::message::{
     AgentOutput, AgentReasoning, Message as MessageKind, RequestMetadata as ProtoRequestMetadata,
     ToolCall, ToolCallResult, UpdateTodos,
 };
-use warp_multi_agent_api::response_event::stream_finished::{
-    ConversationUsageMetadata, TokenUsage,
-};
+use warp_multi_agent_api::response_event::stream_finished::ConversationUsageMetadata;
 use warp_multi_agent_api::response_event::{
     ClientActions, StreamFinished, StreamInit, Type as EventType, stream_finished,
 };
@@ -427,30 +425,18 @@ async fn drive_codex_turn(
     } else {
         0.0
     };
-    let mut warp_by_cat = HashMap::new();
-    warp_by_cat.insert(
-        "primary_agent".to_owned(),
-        u32::try_from(last_in_tokens.saturating_add(last_out_tokens)).unwrap_or(u32::MAX),
-    );
+    #[allow(deprecated)]
     let finished = StreamFinished {
         reason: Some(stream_finished::Reason::Done(stream_finished::Done {})),
         conversation_usage_metadata: Some(ConversationUsageMetadata {
             context_window_usage: ctx_fraction,
-            max_context_window_tokens: u32::try_from(context_window).unwrap_or(200_000),
-            summarization_boundary_message_index: 0,
+            total_input_tokens: u32::try_from(last_in_tokens).unwrap_or(u32::MAX),
+            summarized: false,
             credits_spent: 0.0,
-            total_charges: None,
-        }),
-        token_usage: vec![TokenUsage {
-            model_id: model_label,
-            warp_tokens: u32::try_from(last_in_tokens.saturating_add(last_out_tokens))
-                .unwrap_or(u32::MAX),
-            byok_tokens: 0,
-            warp_token_usage_by_category: warp_by_cat,
             ..Default::default()
-        }],
+        }),
+        token_usage: Vec::new(),
         should_refresh_model_config: false,
-        #[allow(deprecated)]
         request_cost: None,
         request_charges: None,
     };

@@ -46,8 +46,9 @@ jobs:
           rustup default "$TOOLCHAIN"
           rustup target add aarch64-apple-darwin
 
-      - name: Cache Cargo registry and build artifacts
-        uses: actions/cache@v4
+      - name: Restore Cargo registry and build cache
+        id: cargo-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/registry/index/
@@ -55,8 +56,9 @@ jobs:
             ~/.cargo/git/db/
             ~/.cargo/bin/cargo-bundle
             target/
-          key: macos-15-aarch64-warpcodex-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          key: macos-15-aarch64-warpcodex-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ github.run_id }}
           restore-keys: |
+            macos-15-aarch64-warpcodex-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
             macos-15-aarch64-warpcodex-
 
       - name: Install cargo-bundle 0.11.0
@@ -86,6 +88,18 @@ jobs:
           cp target/release-lto/bundle/osx/WarpCodex.dmg target/release-lto/bundle/osx/WarpCodex-macos-arm64.dmg
           shasum -a 256 target/release-lto/bundle/osx/WarpCodex-macos-arm64.dmg target/release-lto/bundle/osx/WarpCodex-macos-arm64.app.zip > target/release-lto/bundle/osx/SHA256SUMS.txt
           cat target/release-lto/bundle/osx/SHA256SUMS.txt
+
+      - name: Save Cargo build cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/bin/cargo-bundle
+            target/
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

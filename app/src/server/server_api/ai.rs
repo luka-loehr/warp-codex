@@ -2399,15 +2399,9 @@ impl AIClient for ServerApi {
     async fn generate_commands_from_natural_language(
         &self,
         prompt: String,
-        ai_execution_context: Option<WarpAiExecutionContext>,
+        _ai_execution_context: Option<WarpAiExecutionContext>,
     ) -> Result<Vec<AIGeneratedCommand>, GenerateCommandsFromNaturalLanguageError> {
-        let cwd = ai_execution_context
-            .as_ref()
-            .and_then(|c| c.pwd.as_deref());
-        let shell = ai_execution_context
-            .as_ref()
-            .and_then(|c| c.shell.as_deref());
-        crate::ai::codex_local::generate_commands(&prompt, cwd, shell).await
+        crate::ai::codex_local::generate_commands(prompt).await
     }
 
     async fn generate_dialogue_answer(
@@ -2416,14 +2410,14 @@ impl AIClient for ServerApi {
         prompt: String,
         _ai_execution_context: Option<WarpAiExecutionContext>,
     ) -> anyhow::Result<GenerateDialogueResult> {
-        crate::ai::codex_local::generate_dialogue(&transcript, &prompt).await
+        crate::ai::codex_local::generate_dialogue(transcript, prompt).await
     }
 
     async fn generate_metadata_for_command(
         &self,
         command: String,
     ) -> Result<GeneratedCommandMetadata, GeneratedCommandMetadataError> {
-        crate::ai::codex_local::generate_workflow_metadata(&command).await
+        crate::ai::codex_local::generate_workflow_metadata(command).await
     }
 
     #[cfg(feature = "agent_mode_evals")]
