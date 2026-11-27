@@ -490,6 +490,10 @@ inherits = "release"
 lto = false
 debug = false
 strip = "debuginfo"
+split-debuginfo = "unpacked"
+
+[profile.release-lto.package.warp]
+opt-level = 1
 
 # A shorthand profile for `release-lto`.
 # Windows enforces that any path is a maximum of 255 characters and
