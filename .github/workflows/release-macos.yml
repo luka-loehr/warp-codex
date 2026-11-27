@@ -73,6 +73,12 @@ jobs:
             cargo install cargo-bundle --version 0.11.0 --locked
           fi
 
+      - name: Compile warp-oss release binary
+        run: |
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
+          export MACOSX_DEPLOYMENT_TARGET="10.14"
+          (cd app && cargo build --profile release-lto --bin warp-oss --target aarch64-apple-darwin --features "release_bundle,extern_plist,gui,nld_classifier_v3,nld_heuristic_v2")
+
       - name: Bundle WarpCodex.app & WarpCodex.dmg
         run: |
           export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
