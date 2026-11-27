@@ -15,8 +15,8 @@ use warpui::{AppContext, Entity, ModelContext, SingletonEntity};
 
 pub use agent_stream::generate_codex_multi_agent_output;
 pub use rpc::{
-    CodexSnapshot, logout, refresh_all, run_ephemeral_turn, snapshot, spawn_background_refresh,
-    start_chatgpt_login, subscribe_state_changes,
+    CodexSnapshot, logout, refresh_all, run_ephemeral_turn, snapshot, snapshot_or_init,
+    spawn_background_refresh, start_chatgpt_login, subscribe_state_changes,
 };
 
 use crate::ai::credit_availability::{AICreditAvailability, AICreditDenialReason, AICreditSource};
@@ -31,8 +31,7 @@ use crate::ai::llms::{
     ModelsByFeature,
 };
 use crate::ai::predict::generate_ai_input_suggestions::{
-    AgentModeSuggestionV2, GenerateAIInputSuggestionsRequest,
-    GenerateAIInputSuggestionsResponseV2,
+    AgentModeSuggestionV2, GenerateAIInputSuggestionsRequest, GenerateAIInputSuggestionsResponseV2,
 };
 use crate::ai::predict::generate_am_query_suggestions::{
     GenerateAMQuerySuggestionsRequest, GenerateAMQuerySuggestionsResponse, SimpleQuery, Suggestion,
@@ -80,16 +79,13 @@ impl CodexSyncModel {
 
     fn rearm_listener(&mut self, ctx: &mut ModelContext<Self>) {
         let mut rx = subscribe_state_changes();
-        ctx.spawn(
-            async move { rx.recv().await.ok() },
-            |me, received, ctx| {
-                if received.is_some() {
-                    sync_codex_state_into_app(ctx);
-                    ctx.emit(());
-                    me.rearm_listener(ctx);
-                }
-            },
-        );
+        ctx.spawn(async move { rx.recv().await.ok() }, |me, received, ctx| {
+            if received.is_some() {
+                sync_codex_state_into_app(ctx);
+                ctx.emit(());
+                me.rearm_listener(ctx);
+            }
+        });
     }
 }
 
@@ -103,7 +99,9 @@ pub fn spawn_background_login() {
         .spawn(|| {
             if let Ok(url) = futures::executor::block_on(start_chatgpt_login()) {
                 #[cfg(target_os = "macos")]
-                let _ = std::process::Command::new("/usr/bin/open").arg(&url).spawn();
+                let _ = std::process::Command::new("/usr/bin/open")
+                    .arg(&url)
+                    .spawn();
                 #[cfg(not(target_os = "macos"))]
                 let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
             }
@@ -243,12 +241,8 @@ pub fn models_by_feature_from_snapshot(snap: &CodexSnapshot) -> ModelsByFeature 
             .unwrap_or_else(|| LLMId::from("gpt-5.4"))
     });
 
-    let available = AvailableLLMs::new(
-        chosen_default.clone(),
-        choices,
-        Some(chosen_default),
-    )
-    .expect("Codex model choices are never empty");
+    let available = AvailableLLMs::new(chosen_default.clone(), choices, Some(chosen_default))
+        .expect("Codex model choices are never empty");
 
     ModelsByFeature {
         agent_mode: available.clone(),
@@ -279,11 +273,7 @@ pub fn harnesses_from_snapshot(snap: &CodexSnapshot) -> Vec<HarnessAvailability>
 pub fn chatgpt_connection_from_snapshot(snap: &CodexSnapshot) -> ChatGPTConnectionStatus {
     if snap.logged_in {
         ChatGPTConnectionStatus::Connected(ChatGPTConnection {
-            email: Some(
-                snap.email
-                    .clone()
-                    .unwrap_or_else(|| snap.plan_badge()),
-            ),
+            email: Some(snap.email.clone().unwrap_or_else(|| snap.plan_badge())),
             connected_at: Utc::now().into(),
             token_sharing_active: true,
         })
@@ -392,8 +382,8 @@ pub async fn generate_commands(
     let raw = run_ephemeral_turn(&full_prompt, None, None, Some("low"), Some(schema))
         .await
         .map_err(|_| GenerateCommandsFromNaturalLanguageError::AiProviderError)?;
-    let parsed: SchemaOut = serde_json::from_str(&raw)
-        .map_err(|_| GenerateCommandsFromNaturalLanguageError::Other)?;
+    let parsed: SchemaOut =
+        serde_json::from_str(&raw).map_err(|_| GenerateCommandsFromNaturalLanguageError::Other)?;
 
     Ok(parsed
         .commands
@@ -511,7 +501,9 @@ pub async fn generate_code_review(
         OutputType::CommitMessage => {
             "Write a clean, concise git commit message (imperative subject line, optional short body, no AI attribution) for this diff:"
         }
-        OutputType::PrTitle => "Write a concise pull request title (single line, no quotes) for this diff:",
+        OutputType::PrTitle => {
+            "Write a concise pull request title (single line, no quotes) for this diff:"
+        }
         OutputType::PrDescription => "Write a clear Markdown pull request summary for this diff:",
     };
     let prompt = format!(

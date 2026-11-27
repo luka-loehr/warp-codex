@@ -2275,8 +2275,11 @@ impl AISettings {
     }
 
     pub fn is_any_ai_enabled(&self, app: &AppContext) -> bool {
-        // Disable AI for anonymous and logged-out users.
-        let is_anonymous_or_logged_out = AuthStateProvider::as_ref(app)
+        // Disable AI for anonymous and logged-out users (except in local Codex OSS builds).
+        let is_anonymous_or_logged_out = !matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) && AuthStateProvider::as_ref(app)
             .get()
             .is_anonymous_or_logged_out();
 

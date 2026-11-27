@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
@@ -96,6 +96,9 @@ pub struct ServerNotification {
 }
 
 static SNAPSHOT: OnceLock<RwLock<CodexSnapshot>> = OnceLock::new();
+static INITIALIZED: AtomicBool = AtomicBool::new(false);
+static CONNECT_LOCK: OnceLock<futures::lock::Mutex<()>> = OnceLock::new();
+static REFRESH_LOCK: OnceLock<futures::lock::Mutex<()>> = OnceLock::new();
 static STATE_BROADCAST: OnceLock<(
     async_broadcast::Sender<()>,
     async_broadcast::InactiveReceiver<()>,
@@ -103,7 +106,17 @@ static STATE_BROADCAST: OnceLock<(
 static CLIENT: OnceLock<Mutex<Option<Arc<CodexClient>>>> = OnceLock::new();
 
 pub fn snapshot() -> CodexSnapshot {
-    SNAPSHOT.get_or_init(|| RwLock::new(default_boot_snapshot())).read().clone()
+    SNAPSHOT
+        .get_or_init(|| RwLock::new(default_boot_snapshot()))
+        .read()
+        .clone()
+}
+
+pub async fn snapshot_or_init() -> CodexSnapshot {
+    if !INITIALIZED.load(Ordering::SeqCst) {
+        let _ = refresh_all().await;
+    }
+    snapshot()
 }
 
 pub fn subscribe_state_changes() -> async_broadcast::Receiver<()> {
@@ -121,13 +134,55 @@ fn notify_state_changed() {
     }
 }
 
+pub(crate) fn quotas_meaningfully_equal(
+    a: &Option<CodexWindowQuota>,
+    b: &Option<CodexWindowQuota>,
+) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(qa), Some(qb)) => {
+            (qa.used_percent - qb.used_percent).abs() < 0.01
+                && qa.window_mins == qb.window_mins
+                && match (qa.resets_at_unix, qb.resets_at_unix) {
+                    (None, None) => true,
+                    (Some(ta), Some(tb)) => (ta - tb).abs() < 90,
+                    _ => false,
+                }
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn snapshots_meaningfully_equal(a: &CodexSnapshot, b: &CodexSnapshot) -> bool {
+    a.cli_path == b.cli_path
+        && a.cli_version == b.cli_version
+        && a.logged_in == b.logged_in
+        && a.requires_auth == b.requires_auth
+        && a.auth_mode == b.auth_mode
+        && a.email == b.email
+        && a.plan_type == b.plan_type
+        && quotas_meaningfully_equal(&a.five_hour, &b.five_hour)
+        && quotas_meaningfully_equal(&a.weekly, &b.weekly)
+        && a.credits_balance == b.credits_balance
+        && a.credits_unlimited == b.credits_unlimited
+        && a.rate_limit_reached == b.rate_limit_reached
+        && a.lifetime_tokens == b.lifetime_tokens
+        && a.peak_daily_tokens == b.peak_daily_tokens
+        && a.models == b.models
+        && a.last_error == b.last_error
+}
+
 pub fn update_snapshot(mutator: impl FnOnce(&mut CodexSnapshot)) {
-    {
+    let changed = {
         let lock = SNAPSHOT.get_or_init(|| RwLock::new(default_boot_snapshot()));
         let mut guard = lock.write();
+        let before = guard.clone();
         mutator(&mut guard);
+        !snapshots_meaningfully_equal(&before, &guard)
+    };
+    if changed {
+        notify_state_changed();
     }
-    notify_state_changed();
 }
 
 fn default_boot_snapshot() -> CodexSnapshot {
@@ -419,9 +474,10 @@ impl CodexClient {
                     };
 
                     // 1. Server-to-client request (has both `id` and `method`)
-                    if let (Some(req_id), Some(method)) =
-                        (msg.get("id").cloned(), msg.get("method").and_then(Value::as_str))
-                    {
+                    if let (Some(req_id), Some(method)) = (
+                        msg.get("id").cloned(),
+                        msg.get("method").and_then(Value::as_str),
+                    ) {
                         if let Some(strong) = client_weak.upgrade() {
                             handle_server_request(&strong, req_id, method, &msg["params"]);
                         }
@@ -440,9 +496,10 @@ impl CodexClient {
                                     .to_owned();
                                 let _ = tx.send_blocking(Err(err_msg));
                             } else {
-                                let _ = tx.send_blocking(Ok(
-                                    msg.get("result").cloned().unwrap_or(Value::Null),
-                                ));
+                                let _ = tx.send_blocking(Ok(msg
+                                    .get("result")
+                                    .cloned()
+                                    .unwrap_or(Value::Null)));
                             }
                         }
                         continue;
@@ -572,19 +629,39 @@ fn apply_global_notification(method: &str, params: &Value) {
             }
         }
         "account/updated" => {
-            let auth_mode = params.get("authMode").and_then(Value::as_str).map(str::to_owned);
-            let plan_type = params.get("planType").and_then(Value::as_str).map(str::to_owned);
+            let auth_mode = params
+                .get("authMode")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            let plan_type = params
+                .get("planType")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            let reason = params.get("reason").and_then(Value::as_str);
+            let mut auth_changed = false;
             update_snapshot(|snap| {
-                snap.logged_in = auth_mode.is_some();
+                let new_logged_in = auth_mode.is_some();
+                if snap.logged_in != new_logged_in
+                    || snap.auth_mode != auth_mode
+                    || (plan_type.is_some() && snap.plan_type != plan_type)
+                {
+                    auth_changed = true;
+                }
+                snap.logged_in = new_logged_in;
                 snap.auth_mode = auth_mode;
                 if plan_type.is_some() {
                     snap.plan_type = plan_type;
                 }
             });
-            spawn_background_refresh();
+            if auth_changed && reason != Some("workspaceRoutingReady") {
+                spawn_background_refresh();
+            }
         }
         "account/login/completed" => {
-            let success = params.get("success").and_then(Value::as_bool).unwrap_or(false);
+            let success = params
+                .get("success")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             if !success {
                 let err = params
                     .get("error")
@@ -599,9 +676,15 @@ fn apply_global_notification(method: &str, params: &Value) {
 }
 
 pub async fn get_or_connect() -> Result<Arc<CodexClient>, String> {
+    let _connect_guard = CONNECT_LOCK
+        .get_or_init(|| futures::lock::Mutex::new(()))
+        .lock()
+        .await;
     let existing = {
         let slot = CLIENT.get_or_init(|| Mutex::new(None));
-        let guard = slot.lock().map_err(|_| "Codex client lock poisoned".to_owned())?;
+        let guard = slot
+            .lock()
+            .map_err(|_| "Codex client lock poisoned".to_owned())?;
         guard.clone().filter(|c| c.is_alive())
     };
     if let Some(client) = existing {
@@ -613,7 +696,7 @@ pub async fn get_or_connect() -> Result<Arc<CodexClient>, String> {
         "clientInfo": {
             "name": "warp-codex",
             "title": "Warp Codex",
-            "version": "0.1.0",
+            "version": "0.1.2",
         },
         "capabilities": {
             "experimentalApi": true,
@@ -642,9 +725,15 @@ pub fn spawn_background_refresh() {
 }
 
 pub async fn refresh_all() -> Result<CodexSnapshot, String> {
+    let _refresh_guard = REFRESH_LOCK
+        .get_or_init(|| futures::lock::Mutex::new(()))
+        .lock()
+        .await;
+
     let client = match get_or_connect().await {
         Ok(c) => c,
         Err(err) => {
+            INITIALIZED.store(true, Ordering::SeqCst);
             update_snapshot(|snap| {
                 snap.last_error = Some(err.clone());
             });
@@ -653,29 +742,10 @@ pub async fn refresh_all() -> Result<CodexSnapshot, String> {
     };
 
     // 1. Account & auth check (`account/read`)
-    if let Ok(acc_res) = client.call("account/read", json!({ "refreshToken": false })).await {
-        let requires_auth = acc_res
-            .get("requiresOpenaiAuth")
-            .and_then(Value::as_bool)
-            .unwrap_or(true);
-        let account = acc_res.get("account").filter(|v| !v.is_null());
-        update_snapshot(|snap| {
-            snap.requires_auth = requires_auth;
-            if let Some(acc) = account {
-                snap.logged_in = true;
-                snap.auth_mode = acc.get("type").and_then(Value::as_str).map(str::to_owned);
-                snap.email = acc.get("email").and_then(Value::as_str).map(str::to_owned);
-                if let Some(pt) = acc.get("planType").and_then(Value::as_str) {
-                    snap.plan_type = Some(pt.to_owned());
-                }
-                snap.last_error = None;
-            } else {
-                snap.logged_in = !requires_auth;
-                snap.auth_mode = None;
-                snap.email = None;
-            }
-        });
-    }
+    let acc_res = client
+        .call("account/read", json!({ "refreshToken": false }))
+        .await
+        .ok();
 
     // 2. Models (`model/list` across pages)
     let mut parsed_models = Vec::new();
@@ -713,39 +783,63 @@ pub async fn refresh_all() -> Result<CodexSnapshot, String> {
             break;
         }
     }
-    if !parsed_models.is_empty() {
-        update_snapshot(|snap| {
-            snap.models = parsed_models;
-        });
-    }
 
     // 3. Native Plan & Rate Limits (`account/rateLimits/read`)
-    if let Ok(rl_res) = client
+    let rl_res = client
         .call(
             "account/rateLimits/read",
             json!({ "excludeResetCreditDetails": true }),
         )
         .await
-        && let Some(rl) = rl_res.get("rateLimits")
-    {
-        update_snapshot(|snap| merge_rate_limits_into_snapshot(snap, rl));
-    }
+        .ok();
 
     // 4. Token Usage Summary (`account/usage/read`)
-    if let Ok(usage_res) = client.call("account/usage/read", json!({})).await
-        && let Some(summary) = usage_res.get("summary")
-    {
-        let lifetime = summary.get("lifetimeTokens").and_then(Value::as_u64);
-        let peak = summary.get("peakDailyTokens").and_then(Value::as_u64);
-        update_snapshot(|snap| {
+    let usage_res = client.call("account/usage/read", json!({})).await.ok();
+
+    INITIALIZED.store(true, Ordering::SeqCst);
+    update_snapshot(|snap| {
+        if let Some(ref acc_res) = acc_res {
+            let requires_auth = acc_res
+                .get("requiresOpenaiAuth")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            let account = acc_res.get("account").filter(|v| !v.is_null());
+            snap.requires_auth = requires_auth;
+            if let Some(acc) = account {
+                snap.logged_in = true;
+                snap.auth_mode = acc.get("type").and_then(Value::as_str).map(str::to_owned);
+                snap.email = acc.get("email").and_then(Value::as_str).map(str::to_owned);
+                if let Some(pt) = acc.get("planType").and_then(Value::as_str) {
+                    snap.plan_type = Some(pt.to_owned());
+                }
+                snap.last_error = None;
+            } else {
+                snap.logged_in = !requires_auth;
+                snap.auth_mode = None;
+                snap.email = None;
+            }
+        }
+        if !parsed_models.is_empty() {
+            snap.models = parsed_models;
+        }
+        if let Some(ref rl_res) = rl_res
+            && let Some(rl) = rl_res.get("rateLimits")
+        {
+            merge_rate_limits_into_snapshot(snap, rl);
+        }
+        if let Some(ref usage_res) = usage_res
+            && let Some(summary) = usage_res.get("summary")
+        {
+            let lifetime = summary.get("lifetimeTokens").and_then(Value::as_u64);
+            let peak = summary.get("peakDailyTokens").and_then(Value::as_u64);
             if lifetime.is_some() {
                 snap.lifetime_tokens = lifetime;
             }
             if peak.is_some() {
                 snap.peak_daily_tokens = peak;
             }
-        });
-    }
+        }
+    });
 
     Ok(snapshot())
 }
@@ -805,7 +899,10 @@ pub(crate) fn parse_model_entry(item: &Value) -> Option<CodexModelEntry> {
         .get("inputModalities")
         .and_then(Value::as_array)
         .is_none_or(|mods| mods.iter().any(|m| m.as_str() == Some("image")));
-    let is_default = item.get("isDefault").and_then(Value::as_bool).unwrap_or(false);
+    let is_default = item
+        .get("isDefault")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
 
     Some(CodexModelEntry {
         id,
@@ -852,9 +949,7 @@ pub(crate) fn merge_rate_limits_into_snapshot(snap: &mut CodexSnapshot, rl: &Val
             snap.credits_balance = Some(bal.to_owned());
         }
     }
-    let reached_by_flag = rl
-        .get("rateLimitReachedType")
-        .is_some_and(|v| !v.is_null());
+    let reached_by_flag = rl.get("rateLimitReachedType").is_some_and(|v| !v.is_null());
     let reached_by_pct = snap
         .five_hour
         .as_ref()
@@ -887,7 +982,10 @@ pub async fn start_chatgpt_login() -> Result<String, String> {
 pub async fn start_device_code_login() -> Result<(String, String), String> {
     let client = get_or_connect().await?;
     let res = client
-        .call("account/login/start", json!({ "type": "chatgptDeviceCode" }))
+        .call(
+            "account/login/start",
+            json!({ "type": "chatgptDeviceCode" }),
+        )
         .await?;
     let url = res
         .get("verificationUrl")
@@ -968,7 +1066,10 @@ pub async fn run_ephemeral_turn(
     }
 
     let turn_res = client.call("turn/start", turn_params).await?;
-    let turn_id = turn_res["turn"]["id"].as_str().unwrap_or_default().to_owned();
+    let turn_id = turn_res["turn"]["id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
 
     let deadline = std::time::Instant::now() + Duration::from_secs(45);
     let mut streamed = String::new();

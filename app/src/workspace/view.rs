@@ -10062,11 +10062,6 @@ impl Workspace {
             warp_core::channel::Channel::Oss
         ) {
             let mut oss_items = vec![
-                MenuItemFields::new("Codex & usage")
-                    .with_on_select_action(WorkspaceAction::ShowSettingsPage(
-                        SettingsSection::BillingAndUsage,
-                    ))
-                    .into_item(),
                 MenuItemFields::new("Settings")
                     .with_on_select_action(WorkspaceAction::ShowSettings)
                     .into_item(),
@@ -18255,7 +18250,10 @@ impl Workspace {
         if self.is_readonly_shared_session_active(ctx) {
             return;
         }
-        if self.auth_state.is_anonymous_or_logged_out()
+        if !matches!(
+            ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) && self.auth_state.is_anonymous_or_logged_out()
             && workflow.as_workflow().is_agent_mode_workflow()
         {
             AuthManager::handle(ctx).update(ctx, |auth_manager, ctx| {

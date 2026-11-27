@@ -490,7 +490,6 @@ inherits = "release"
 lto = false
 debug = false
 strip = "debuginfo"
-split-debuginfo = "unpacked"
 
 [profile.release-lto.package.warp]
 opt-level = 1

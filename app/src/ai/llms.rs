@@ -1992,7 +1992,11 @@ impl LLMPreferences {
         ctx: &mut ModelContext<Self>,
     ) {
         // Don't try to fetch auth'd models if the user is not logged in yet.
-        if !AuthStateProvider::as_ref(ctx).get().is_logged_in() {
+        if !matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) && !AuthStateProvider::as_ref(ctx).get().is_logged_in()
+        {
             return;
         }
 
@@ -2045,7 +2049,11 @@ impl LLMPreferences {
         scope: &(impl TeamScope + ?Sized),
         ctx: &mut ModelContext<Self>,
     ) {
-        if AuthStateProvider::as_ref(ctx).get().is_logged_in() {
+        if matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) || AuthStateProvider::as_ref(ctx).get().is_logged_in()
+        {
             self.refresh_authed_models(scope, ctx);
         } else {
             self.refresh_public_models(ctx);

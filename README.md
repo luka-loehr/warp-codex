@@ -37,6 +37,13 @@
    ```
 4. Open **WarpCodex** — your terminal, models, and Codex quota bars connect automatically. If `codex` lives in a custom path, set `WARP_CODEX_BIN=/path/to/codex`.
 
+### Using AI in WarpCodex
+
+- **Toggle Terminal ↔ Agent Mode** — Press `Cmd+I` (or click the Agent icon / just type plain English in the prompt for auto-detection) and pick any Codex model + reasoning effort right in the input bar.
+- **Natural-language shell command search** — Type `#` at the start of an empty prompt (or press `Ctrl+\``) to generate runnable shell commands inline.
+- **Dedicated Agent panes, tabs & history** — Press `Ctrl+Space` to split open an Agent pane, click `+` → **New Agent Tab**, or press `Ctrl+2` to open local Agent conversation history in the left sidebar.
+- **Codex & usage settings** — Press `Cmd+,` to manage your ChatGPT login, view 5-hour & 7-day rolling quota bars, and inspect exposed models.
+
 ---
 
 ## Documentation

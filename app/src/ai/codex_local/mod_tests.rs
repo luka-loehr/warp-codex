@@ -1,9 +1,13 @@
 use serde_json::json;
 
-use super::rpc::{CodexSnapshot, merge_rate_limits_into_snapshot, parse_model_entry};
+use super::rpc::{
+    CodexSnapshot, CodexWindowQuota, merge_rate_limits_into_snapshot, parse_model_entry,
+    snapshots_meaningfully_equal,
+};
+use super::ui::{format_quota_reset_label, format_reset_time};
 use super::{
-    credit_availability_from_snapshot, models_by_feature_from_snapshot, rank_relevant_files_locally,
-    request_usage_from_snapshot, split_model_and_effort,
+    credit_availability_from_snapshot, models_by_feature_from_snapshot,
+    rank_relevant_files_locally, request_usage_from_snapshot, split_model_and_effort,
 };
 use crate::ai::get_relevant_files::api::{FileContext, GetRelevantFiles};
 
@@ -127,4 +131,29 @@ fn ranks_relevant_files_by_path_and_symbol_hits() {
     };
     let out = rank_relevant_files_locally(&req);
     assert_eq!(out.relevant_file_paths, vec!["src/ai/codex_local/rpc.rs"]);
+}
+
+#[test]
+fn quota_reset_labels_do_not_jitter_on_unused_or_boundary_windows() {
+    let now = chrono::Utc::now().timestamp();
+    let unused_5h = CodexWindowQuota {
+        used_percent: 0.0,
+        window_mins: Some(300),
+        resets_at_unix: Some(now + 17_999),
+    };
+    assert_eq!(format_quota_reset_label(&unused_5h), "5h rolling window");
+
+    // Even when active (`> 0%`), 17,999s rounds cleanly to 300m (`5h 0m`) instead of `4h 59m`.
+    assert_eq!(format_reset_time(Some(now + 17_999)), "Resets in 5h 0m");
+
+    let mut snap_a = CodexSnapshot {
+        five_hour: Some(unused_5h),
+        ..CodexSnapshot::default()
+    };
+    let mut snap_b = snap_a.clone();
+    snap_b.five_hour.as_mut().unwrap().resets_at_unix = Some(now + 18_002);
+    assert!(snapshots_meaningfully_equal(&snap_a, &snap_b));
+
+    snap_a.five_hour.as_mut().unwrap().used_percent = 12.0;
+    assert!(!snapshots_meaningfully_equal(&snap_a, &snap_b));
 }

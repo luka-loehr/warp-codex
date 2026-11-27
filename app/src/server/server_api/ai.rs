@@ -2431,10 +2431,7 @@ impl AIClient for ServerApi {
 
     #[cfg(not(feature = "agent_mode_evals"))]
     async fn get_request_limit_info(&self) -> Result<RequestUsageInfo, anyhow::Error> {
-        let snap = match crate::ai::codex_local::refresh_all().await {
-            Ok(s) => s,
-            Err(_) => crate::ai::codex_local::snapshot(),
-        };
+        let snap = crate::ai::codex_local::snapshot_or_init().await;
         Ok(crate::ai::codex_local::request_usage_from_snapshot(&snap))
     }
 
@@ -2447,15 +2444,12 @@ impl AIClient for ServerApi {
 
     #[cfg(not(feature = "agent_mode_evals"))]
     async fn get_ai_credit_availability(&self) -> Result<AICreditAvailability, anyhow::Error> {
-        let snap = crate::ai::codex_local::snapshot();
+        let snap = crate::ai::codex_local::snapshot_or_init().await;
         Ok(crate::ai::codex_local::credit_availability_from_snapshot(&snap))
     }
 
     async fn get_chatgpt_connection(&self) -> Result<ChatGPTConnectionStatus, anyhow::Error> {
-        let snap = match crate::ai::codex_local::refresh_all().await {
-            Ok(s) => s,
-            Err(_) => crate::ai::codex_local::snapshot(),
-        };
+        let snap = crate::ai::codex_local::snapshot_or_init().await;
         Ok(crate::ai::codex_local::chatgpt_connection_from_snapshot(&snap))
     }
 
@@ -2491,18 +2485,12 @@ impl AIClient for ServerApi {
     }
 
     async fn get_feature_model_choices(&self) -> Result<ModelsByFeature, anyhow::Error> {
-        let snap = match crate::ai::codex_local::refresh_all().await {
-            Ok(s) => s,
-            Err(_) => crate::ai::codex_local::snapshot(),
-        };
+        let snap = crate::ai::codex_local::snapshot_or_init().await;
         Ok(crate::ai::codex_local::models_by_feature_from_snapshot(&snap))
     }
 
     async fn get_available_harnesses(&self) -> Result<Vec<HarnessAvailability>, anyhow::Error> {
-        let snap = match crate::ai::codex_local::refresh_all().await {
-            Ok(s) => s,
-            Err(_) => crate::ai::codex_local::snapshot(),
-        };
+        let snap = crate::ai::codex_local::snapshot_or_init().await;
         Ok(crate::ai::codex_local::harnesses_from_snapshot(&snap))
     }
 
@@ -2510,10 +2498,7 @@ impl AIClient for ServerApi {
         &self,
         _referrer: Option<String>,
     ) -> Result<ModelsByFeature, anyhow::Error> {
-        let snap = match crate::ai::codex_local::refresh_all().await {
-            Ok(s) => s,
-            Err(_) => crate::ai::codex_local::snapshot(),
-        };
+        let snap = crate::ai::codex_local::snapshot_or_init().await;
         Ok(crate::ai::codex_local::models_by_feature_from_snapshot(&snap))
     }
 

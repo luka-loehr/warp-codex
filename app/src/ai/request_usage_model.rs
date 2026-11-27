@@ -329,7 +329,11 @@ impl AIRequestUsageModel {
         ctx: &mut ModelContext<Self>,
     ) -> Receiver<Option<usize>> {
         let (sender, receiver) = oneshot::channel();
-        if !AuthStateProvider::as_ref(ctx).get().is_logged_in() {
+        if !matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) && !AuthStateProvider::as_ref(ctx).get().is_logged_in()
+        {
             let _ = sender.send(None);
             return receiver;
         }
@@ -409,7 +413,11 @@ impl AIRequestUsageModel {
     }
 
     pub fn request_availability_refresh(&mut self, ctx: &mut ModelContext<Self>) {
-        if !AuthStateProvider::as_ref(ctx).get().is_logged_in() {
+        if !matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) && !AuthStateProvider::as_ref(ctx).get().is_logged_in()
+        {
             return;
         }
         if self.server_availability.refresh_in_flight {
@@ -544,6 +552,12 @@ impl AIRequestUsageModel {
     /// Returns `true` if the user can start an interactive AI request.
     /// Prefers the server decision when present; otherwise uses the pre-fetch fallback.
     pub fn has_any_ai_remaining<S: TeamScope + ?Sized>(&self, scope: &S, ctx: &AppContext) -> bool {
+        if matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) {
+            return !crate::ai::codex_local::snapshot().rate_limit_reached;
+        }
         if let Some(availability) = self.server_availability.latest {
             return Self::server_availability_permits_ai(availability, scope, ctx);
         }

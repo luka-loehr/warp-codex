@@ -437,7 +437,11 @@ impl HarnessAvailabilityModel {
     }
     pub fn refresh(&self, ctx: &mut ModelContext<Self>) {
         // The endpoint queries `user`, which requires auth.
-        if !AuthStateProvider::as_ref(ctx).get().is_logged_in() {
+        if !matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) && !AuthStateProvider::as_ref(ctx).get().is_logged_in()
+        {
             return;
         }
 

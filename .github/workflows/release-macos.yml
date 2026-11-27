@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag to publish (leave empty to build artifact only)"
         required: false
-        default: "v0.1.1"
+        default: "v0.1.2"
   push:
     tags:
       - "v*"
@@ -65,7 +65,8 @@ jobs:
       - name: Prune debug and bundle artifacts to free runner disk
         run: |
           rm -rf target/debug target/*/debug target/release-lto/bundle target/*/release-lto/bundle
-          rm -rf target/*/release-lto/deps/*warp* target/*/release-lto/*.dSYM target/release-lto/deps/*warp*
+          rm -rf target/*/release-lto/deps/libwarp-* target/*/release-lto/deps/warp_oss* target/*/release-lto/warp-oss* target/*/release-lto/*.dSYM
+          rm -rf target/release-lto/deps/libwarp-* target/release-lto/deps/warp_oss* target/release-lto/warp-oss*
           df -h /
 
       - name: Install cargo-bundle 0.11.0
@@ -98,7 +99,7 @@ jobs:
           cp target/release-lto/bundle/osx/WarpCodex.dmg /tmp/warpcodex-dist/WarpCodex-macos-arm64.dmg
           (cd /tmp/warpcodex-dist && shasum -a 256 WarpCodex-macos-arm64.dmg WarpCodex-macos-arm64.app.zip > SHA256SUMS.txt && cat SHA256SUMS.txt)
           rm -rf target/debug target/*/debug target/release-lto/bundle target/*/release-lto/bundle
-          rm -rf target/*/release-lto/deps/*warp* target/*/release-lto/*.dSYM
+          rm -rf target/*/release-lto/deps/libwarp-* target/*/release-lto/deps/warp_oss* target/*/release-lto/warp-oss* target/*/release-lto/*.dSYM
           df -h /
 
       - name: Save Cargo build cache

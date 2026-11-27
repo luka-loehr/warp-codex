@@ -53,18 +53,46 @@ pub fn format_reset_time(unix_secs: Option<i64>) -> String {
     if diff <= 0 {
         return "Resetting soon".to_owned();
     }
-    if diff < 3600 {
-        return format!("Resets in {}m", (diff / 60).max(1));
-    }
     if diff < 86_400 {
-        let h = diff / 3600;
-        let m = (diff % 3600) / 60;
+        // Round to nearest minute so a 5h rolling window boundary (17,999s vs 18,000s)
+        // never flickers between `4h 59m` and `5h 0m` across second boundaries.
+        let total_mins = ((diff + 30) / 60).max(1);
+        if total_mins < 60 {
+            return format!("Resets in {total_mins}m");
+        }
+        let h = total_mins / 60;
+        let m = total_mins % 60;
         return format!("Resets in {h}h {m}m");
     }
     if let Some(dt) = Local.timestamp_opt(ts, 0).single() {
         return format!("Resets {}", dt.format("%a %b %-d, %H:%M"));
     }
     format!("Resets in {}d", diff / 86_400)
+}
+
+pub fn format_quota_reset_label(quota: &CodexWindowQuota) -> String {
+    if quota.used_percent <= 0.0 {
+        match quota.window_mins {
+            Some(mins) if mins < 1440 => {
+                let hours = (mins / 60).max(1);
+                return format!("{hours}h rolling window");
+            }
+            Some(mins) => {
+                if let Some(ts) = quota.resets_at_unix.filter(|&s| s > 0) {
+                    let now = chrono::Utc::now().timestamp();
+                    if ts - now >= 86_400
+                        && let Some(dt) = Local.timestamp_opt(ts, 0).single()
+                    {
+                        return format!("Resets {}", dt.format("%a %b %-d, %H:%M"));
+                    }
+                }
+                let days = (mins / 1440).max(1);
+                return format!("{days}d rolling window");
+            }
+            None => return "Rolling window".to_owned(),
+        }
+    }
+    format_reset_time(quota.resets_at_unix)
 }
 
 fn render_progress_bar(used_pct: f64, track_color: ColorU) -> Box<dyn Element> {
@@ -119,7 +147,7 @@ fn render_quota_window_row(
     let theme = appearance.theme();
     let bg = theme.surface_2();
     let font_size = appearance.ui_font_size();
-    let reset_text = format_reset_time(quota.resets_at_unix);
+    let reset_text = format_quota_reset_label(quota);
     let pct_label = format!("{:.0}% used · {reset_text}", quota.used_percent);
 
     let top_row = Flex::row()
@@ -619,10 +647,18 @@ pub fn render_codex_settings_overview(
     let mut body = Flex::column().with_spacing(12.0).with_child(top_row);
 
     if let Some(ref five_h) = snap.five_hour {
-        body.add_child(render_quota_window_row("5-hour rolling limit", five_h, appearance));
+        body.add_child(render_quota_window_row(
+            "5-hour rolling limit",
+            five_h,
+            appearance,
+        ));
     }
     if let Some(ref week) = snap.weekly {
-        body.add_child(render_quota_window_row("7-day weekly limit", week, appearance));
+        body.add_child(render_quota_window_row(
+            "7-day weekly limit",
+            week,
+            appearance,
+        ));
     }
 
     if snap.credits_unlimited || snap.credits_balance.is_some() || snap.lifetime_tokens.is_some() {
@@ -672,9 +708,13 @@ pub fn render_codex_settings_overview(
 
     if let Some(ref err) = snap.last_error {
         body.add_child(
-            Text::new_inline(format!("Status note: {err}"), appearance.ui_font_family(), 12.0)
-                .with_color(theme.ansi_fg_yellow())
-                .finish(),
+            Text::new_inline(
+                format!("Status note: {err}"),
+                appearance.ui_font_family(),
+                12.0,
+            )
+            .with_color(theme.ansi_fg_yellow())
+            .finish(),
         );
     }
 

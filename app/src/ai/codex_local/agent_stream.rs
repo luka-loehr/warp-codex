@@ -8,9 +8,7 @@ use futures::FutureExt;
 use prost_types::FieldMask;
 use serde_json::{Value, json};
 use uuid::Uuid;
-use warp_multi_agent_api::client_action::{
-    AddMessagesToTask, AppendToMessageContent, CreateTask,
-};
+use warp_multi_agent_api::client_action::{AddMessagesToTask, AppendToMessageContent, CreateTask};
 use warp_multi_agent_api::message::tool_call::apply_file_diffs::{FileDiff, NewFile};
 use warp_multi_agent_api::message::tool_call::{
     ApplyFileDiffs, CallMcpTool, RunShellCommand, Tool,
@@ -128,7 +126,9 @@ async fn drive_codex_turn(
         Err(err) => {
             let friendly = format_codex_turn_error(&err);
             let _ = tx
-                .send(Err(Arc::new(AIApiError::Other(anyhow::anyhow!("{friendly}")))))
+                .send(Err(Arc::new(AIApiError::Other(anyhow::anyhow!(
+                    "{friendly}"
+                )))))
                 .await;
             return;
         }
@@ -183,7 +183,9 @@ async fn drive_codex_turn(
         Err(err) => {
             let friendly = format_codex_turn_error(&err);
             let _ = tx
-                .send(Err(Arc::new(AIApiError::Other(anyhow::anyhow!("{friendly}")))))
+                .send(Err(Arc::new(AIApiError::Other(anyhow::anyhow!(
+                    "{friendly}"
+                )))))
                 .await;
             return;
         }
@@ -376,7 +378,9 @@ async fn drive_codex_turn(
     if let Some(err) = turn_error {
         let friendly = format_codex_turn_error(&err);
         let _ = tx
-            .send(Err(Arc::new(AIApiError::Other(anyhow::anyhow!("{friendly}")))))
+            .send(Err(Arc::new(AIApiError::Other(anyhow::anyhow!(
+                "{friendly}"
+            )))))
             .await;
         return;
     }
@@ -417,7 +421,11 @@ async fn drive_codex_turn(
                 ..Default::default()
             }),
         );
-        let _ = send_actions(&tx, vec![add_messages_action(&root_task_id, vec![meta_msg])]).await;
+        let _ = send_actions(
+            &tx,
+            vec![add_messages_action(&root_task_id, vec![meta_msg])],
+        )
+        .await;
     }
 
     let ctx_fraction = if context_window > 0 {
@@ -492,7 +500,11 @@ async fn setup_thread(
     Ok((tid, model))
 }
 
-async fn interrupt_turn(client: &CodexClient, thread_id: &str, turn_id: &str) -> Result<(), String> {
+async fn interrupt_turn(
+    client: &CodexClient,
+    thread_id: &str,
+    turn_id: &str,
+) -> Result<(), String> {
     if thread_id.is_empty() || turn_id.is_empty() {
         return Ok(());
     }
@@ -541,8 +553,12 @@ fn extract_turn_inputs(
                         prompt_sections.push(format!("Selected text:\n```\n{text}\n```"));
                     }
                     AIAgentContext::Image(img) => {
-                        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&img.data) {
-                            let ext = if img.mime_type.contains("jpeg") || img.mime_type.contains("jpg") {
+                        if let Ok(bytes) =
+                            base64::engine::general_purpose::STANDARD.decode(&img.data)
+                        {
+                            let ext = if img.mime_type.contains("jpeg")
+                                || img.mime_type.contains("jpg")
+                            {
                                 "jpg"
                             } else if img.mime_type.contains("webp") {
                                 "webp"
@@ -1115,10 +1131,12 @@ fn make_message(task_id: &str, request_id: &str, kind: MessageKind) -> Message {
 
 fn add_messages_action(task_id: &str, messages: Vec<Message>) -> ClientAction {
     ClientAction {
-        action: Some(client_action::Action::AddMessagesToTask(AddMessagesToTask {
-            task_id: task_id.to_owned(),
-            messages,
-        })),
+        action: Some(client_action::Action::AddMessagesToTask(
+            AddMessagesToTask {
+                task_id: task_id.to_owned(),
+                messages,
+            },
+        )),
     }
 }
 
