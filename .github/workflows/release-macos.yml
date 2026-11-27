@@ -64,6 +64,7 @@ jobs:
       - name: Prune debug and bundle artifacts to free runner disk
         run: |
           rm -rf target/debug target/*/debug target/release-lto/bundle target/*/release-lto/bundle
+          rm -rf target/*/release-lto/deps/*warp* target/*/release-lto/*.dSYM target/release-lto/deps/*warp*
           df -h /
 
       - name: Install cargo-bundle 0.11.0
@@ -73,6 +74,9 @@ jobs:
           fi
 
       - name: Bundle WarpCodex.app & WarpCodex.dmg
+        env:
+          CARGO_PROFILE_RELEASE_LTO_DEBUG: "0"
+          CARGO_PROFILE_RELEASE_LTO_STRIP: "debuginfo"
         run: |
           export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
           NO_LICENSES=1 ./script/bundle --channel oss --arch aarch64 --selfsign
@@ -90,6 +94,7 @@ jobs:
           cp target/release-lto/bundle/osx/WarpCodex.dmg /tmp/warpcodex-dist/WarpCodex-macos-arm64.dmg
           (cd /tmp/warpcodex-dist && shasum -a 256 WarpCodex-macos-arm64.dmg WarpCodex-macos-arm64.app.zip > SHA256SUMS.txt && cat SHA256SUMS.txt)
           rm -rf target/debug target/*/debug target/release-lto/bundle target/*/release-lto/bundle
+          rm -rf target/*/release-lto/deps/*warp* target/*/release-lto/*.dSYM
           df -h /
 
       - name: Save Cargo build cache
