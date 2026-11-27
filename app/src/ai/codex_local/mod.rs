@@ -71,6 +71,7 @@ impl CodexSyncModel {
             },
             |me, _, ctx| {
                 sync_codex_state_into_app(ctx);
+                ctx.emit(());
                 me.rearm_listener(ctx);
             },
         );
@@ -84,6 +85,7 @@ impl CodexSyncModel {
             |me, received, ctx| {
                 if received.is_some() {
                     sync_codex_state_into_app(ctx);
+                    ctx.emit(());
                     me.rearm_listener(ctx);
                 }
             },
@@ -93,6 +95,30 @@ impl CodexSyncModel {
 
 pub fn init_and_warm(ctx: &mut AppContext) {
     ctx.add_singleton_model(CodexSyncModel::new);
+}
+
+pub fn spawn_background_login() {
+    std::thread::Builder::new()
+        .name("warp-codex-oauth".to_owned())
+        .spawn(|| {
+            if let Ok(url) = futures::executor::block_on(start_chatgpt_login()) {
+                #[cfg(target_os = "macos")]
+                let _ = std::process::Command::new("/usr/bin/open").arg(&url).spawn();
+                #[cfg(not(target_os = "macos"))]
+                let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
+            }
+        })
+        .ok();
+}
+
+pub fn spawn_background_logout() {
+    std::thread::Builder::new()
+        .name("warp-codex-logout".to_owned())
+        .spawn(|| {
+            let _ = futures::executor::block_on(logout());
+            let _ = futures::executor::block_on(refresh_all());
+        })
+        .ok();
 }
 
 pub fn sync_codex_state_into_app(ctx: &mut AppContext) {

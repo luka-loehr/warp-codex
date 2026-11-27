@@ -342,15 +342,48 @@ use std::fmt::{self, Display};
 
 use crate::util::bindings::custom_tag_to_keystroke;
 
+fn is_codex_oss_ui() -> bool {
+    !cfg!(test) && matches!(ChannelState::channel(), warp_core::channel::Channel::Oss)
+}
+
+fn normalize_codex_oss_section(section: SettingsSection) -> SettingsSection {
+    if !is_codex_oss_ui() {
+        return section;
+    }
+    match section {
+        SettingsSection::Account
+        | SettingsSection::Teams
+        | SettingsSection::Referrals
+        | SettingsSection::SharedBlocks
+        | SettingsSection::WarpDrive
+        | SettingsSection::CloudEnvironments
+        | SettingsSection::WarpCloudAgentAPIKeys
+        | SettingsSection::ThirdPartyCLIAgents => SettingsSection::BillingAndUsage,
+        other => other,
+    }
+}
+
 impl Display for SettingsSection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            SettingsSection::BillingAndUsage => write!(f, "Billing and usage"),
+            SettingsSection::BillingAndUsage => {
+                if is_codex_oss_ui() {
+                    write!(f, "Codex & usage")
+                } else {
+                    write!(f, "Billing and usage")
+                }
+            }
             SettingsSection::Keybindings => write!(f, "Keyboard shortcuts"),
             SettingsSection::SharedBlocks => write!(f, "Shared blocks"),
             SettingsSection::Scripting => write!(f, "Scripting"),
             SettingsSection::WarpDrive => write!(f, "Warp Drive"),
-            SettingsSection::WarpAgent => write!(f, "Warp Agent"),
+            SettingsSection::WarpAgent => {
+                if is_codex_oss_ui() {
+                    write!(f, "AI & Agent")
+                } else {
+                    write!(f, "Warp Agent")
+                }
+            }
             SettingsSection::AgentProfiles => write!(f, "Profiles"),
             SettingsSection::AgentMCPServers => write!(f, "MCP servers"),
             SettingsSection::Knowledge => write!(f, "Knowledge"),
@@ -1405,63 +1438,104 @@ impl SettingsView {
 
         // Build sidebar nav items. Umbrellas group their subpages here and
         // nowhere else, so this list is the only place membership is declared.
-        let mut nav_items = vec![
-            SettingsNavItem::Page(SettingsSection::Account),
-            SettingsNavItem::Umbrella(SettingsUmbrella::new(
+        let mut nav_items = if is_codex_oss_ui() {
+            let mut agents_umbrella = SettingsUmbrella::new(
                 "Agents",
                 vec![
                     SettingsSection::WarpAgent,
                     SettingsSection::AgentProfiles,
                     SettingsSection::AgentMCPServers,
                     SettingsSection::Knowledge,
-                    SettingsSection::ThirdPartyCLIAgents,
                 ],
-            )),
-            SettingsNavItem::Page(SettingsSection::BillingAndUsage),
-            SettingsNavItem::Umbrella(SettingsUmbrella::new(
-                "Code",
-                vec![
-                    SettingsSection::CodeIndexing,
-                    SettingsSection::EditorAndCodeReview,
-                ],
-            )),
-            SettingsNavItem::Umbrella(SettingsUmbrella::new(
-                "Cloud platform",
-                vec![
-                    SettingsSection::CloudEnvironments,
-                    SettingsSection::WarpCloudAgentAPIKeys,
-                ],
-            )),
-            SettingsNavItem::Page(SettingsSection::Teams),
-            SettingsNavItem::Page(SettingsSection::Appearance),
-            SettingsNavItem::Page(SettingsSection::Features),
-            SettingsNavItem::Page(SettingsSection::Keybindings),
-            SettingsNavItem::Page(SettingsSection::Warpify),
-            SettingsNavItem::Page(SettingsSection::Referrals),
-            SettingsNavItem::Page(SettingsSection::SharedBlocks),
-            SettingsNavItem::Page(SettingsSection::WarpDrive),
-            SettingsNavItem::Page(SettingsSection::Privacy),
-            SettingsNavItem::Page(SettingsSection::About),
-        ];
+            );
+            agents_umbrella.expanded = true;
+            vec![
+                SettingsNavItem::Page(SettingsSection::BillingAndUsage),
+                SettingsNavItem::Umbrella(agents_umbrella),
+                SettingsNavItem::Umbrella(SettingsUmbrella::new(
+                    "Code",
+                    vec![
+                        SettingsSection::CodeIndexing,
+                        SettingsSection::EditorAndCodeReview,
+                    ],
+                )),
+                SettingsNavItem::Page(SettingsSection::Appearance),
+                SettingsNavItem::Page(SettingsSection::Features),
+                SettingsNavItem::Page(SettingsSection::Keybindings),
+                SettingsNavItem::Page(SettingsSection::Warpify),
+                SettingsNavItem::Page(SettingsSection::Privacy),
+                SettingsNavItem::Page(SettingsSection::About),
+            ]
+        } else {
+            vec![
+                SettingsNavItem::Page(SettingsSection::Account),
+                SettingsNavItem::Umbrella(SettingsUmbrella::new(
+                    "Agents",
+                    vec![
+                        SettingsSection::WarpAgent,
+                        SettingsSection::AgentProfiles,
+                        SettingsSection::AgentMCPServers,
+                        SettingsSection::Knowledge,
+                        SettingsSection::ThirdPartyCLIAgents,
+                    ],
+                )),
+                SettingsNavItem::Page(SettingsSection::BillingAndUsage),
+                SettingsNavItem::Umbrella(SettingsUmbrella::new(
+                    "Code",
+                    vec![
+                        SettingsSection::CodeIndexing,
+                        SettingsSection::EditorAndCodeReview,
+                    ],
+                )),
+                SettingsNavItem::Umbrella(SettingsUmbrella::new(
+                    "Cloud platform",
+                    vec![
+                        SettingsSection::CloudEnvironments,
+                        SettingsSection::WarpCloudAgentAPIKeys,
+                    ],
+                )),
+                SettingsNavItem::Page(SettingsSection::Teams),
+                SettingsNavItem::Page(SettingsSection::Appearance),
+                SettingsNavItem::Page(SettingsSection::Features),
+                SettingsNavItem::Page(SettingsSection::Keybindings),
+                SettingsNavItem::Page(SettingsSection::Warpify),
+                SettingsNavItem::Page(SettingsSection::Referrals),
+                SettingsNavItem::Page(SettingsSection::SharedBlocks),
+                SettingsNavItem::Page(SettingsSection::WarpDrive),
+                SettingsNavItem::Page(SettingsSection::Privacy),
+                SettingsNavItem::Page(SettingsSection::About),
+            ]
+        };
 
         if FeatureFlag::WarpControlCli.is_enabled() {
-            let shared_blocks_index = nav_items
+            let insert_index = nav_items
                 .iter()
                 .position(|item| {
-                    matches!(item, SettingsNavItem::Page(SettingsSection::SharedBlocks))
+                    matches!(
+                        item,
+                        SettingsNavItem::Page(
+                            SettingsSection::SharedBlocks | SettingsSection::Privacy
+                        )
+                    )
                 })
                 .unwrap_or(nav_items.len());
             nav_items.insert(
-                shared_blocks_index,
+                insert_index,
                 SettingsNavItem::Page(SettingsSection::Scripting),
             );
         }
 
+        let default_section = if is_codex_oss_ui() {
+            SettingsSection::BillingAndUsage
+        } else {
+            SettingsSection::Account
+        };
         let initial_page = match page {
             Some(SettingsSection::Scripting) if !FeatureFlag::WarpControlCli.is_enabled() => {
-                SettingsSection::Account
+                default_section
             }
-            other => other.unwrap_or_default(),
+            Some(explicit) => normalize_codex_oss_section(explicit),
+            None => default_section,
         };
 
         // Auto-expand the umbrella if the initial page is one of its subpages.
@@ -2043,6 +2117,7 @@ impl SettingsView {
         allow_steal_focus: bool,
         ctx: &mut ViewContext<Self>,
     ) {
+        let section = normalize_codex_oss_section(section);
         // Every nav target owns its backing page. Check it exists.
         if self.settings_page(section).is_none() {
             return;
@@ -2112,6 +2187,19 @@ impl SettingsView {
     }
 
     fn should_render_page(&self, settings_page: &SettingsPage, app: &AppContext) -> bool {
+        if is_codex_oss_ui() {
+            match &settings_page.view_handle {
+                SettingsPageViewHandle::Main(_)
+                | SettingsPageViewHandle::Teams(_)
+                | SettingsPageViewHandle::SharedBlocks(_)
+                | SettingsPageViewHandle::WarpCloudAgentAPIKeys(_)
+                | SettingsPageViewHandle::Referrals(_)
+                | SettingsPageViewHandle::CLIAgents(_)
+                | SettingsPageViewHandle::CloudEnvironments(_)
+                | SettingsPageViewHandle::WarpDrive(_) => return false,
+                _ => {}
+            }
+        }
         match &settings_page.view_handle {
             SettingsPageViewHandle::Main(v) => v.as_ref(app).should_render(app),
             SettingsPageViewHandle::Teams(v) => v.as_ref(app).should_render(app),

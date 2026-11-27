@@ -18,7 +18,7 @@
 - **Native Plan mode** — Warp collaboration plan mode wired directly to Codex `collaborationMode: "plan"`
 - **Complete Warp AI parity** — `#` natural-language command search, AI assistant panel, workflow generation, next-command and error-fix suggestions, `@` relevant-file ranking, shared block titles, and Git code review
 - **Dynamic models and reasoning efforts** — Pulls `model/list` live from your ChatGPT Plus, Pro, or Team plan (or API key) with `Low`, `Medium`, `High`, `Extra High`, `Max`, and `Ultra` effort tiers in Warp's model picker
-- **5-hour and 7-day quota UI** — Shows your plan badge, rolling 5-hour and 7-day rate-limit bars, reset countdowns, lifetime token stats, and one-click ChatGPT OAuth sign-in in the footer usage popover and **Settings → Billing and Usage**
+- **5-hour and 7-day quota UI** — Shows your plan badge, rolling 5-hour and 7-day rate-limit bars, reset countdowns, lifetime token stats, and one-click ChatGPT OAuth sign-in / sign-out in the footer usage popover and **Settings → Codex & Usage**
 - **Zero telemetry and zero login wall** — Strips RudderStack analytics, Sentry crash reporting, Firebase auth, cloud preference syncing, and background auto-updaters; opens straight into your local shell
 
 ---

@@ -5,7 +5,7 @@ use warp_core::ui::appearance::Appearance;
 use warpui::Element;
 use warpui::elements::{
     Border, ConstrainedBox, Container, CornerRadius, CrossAxisAlignment, Empty, Expanded, Flex,
-    MainAxisAlignment, MainAxisSize, ParentElement, Radius, Shrinkable, Text,
+    MainAxisAlignment, MainAxisSize, ParentElement, Radius, Shrinkable, Text, Wrap,
 };
 use warpui::fonts::{Properties, Weight};
 
@@ -234,6 +234,329 @@ pub fn render_codex_popover_section(appearance: &Appearance) -> Box<dyn Element>
     }
 
     col.finish()
+}
+
+/// Action buttons passed by `BillingAndUsagePageV2View` into the standalone Codex settings view.
+pub struct CodexSettingsActionButtons {
+    pub sign_in: Box<dyn Element>,
+    pub refresh: Box<dyn Element>,
+    pub manage_usage: Box<dyn Element>,
+    pub sign_out: Box<dyn Element>,
+}
+
+fn render_kv_row(
+    label: &str,
+    value: String,
+    appearance: &Appearance,
+    sub_color: ColorU,
+    val_color: ColorU,
+) -> Box<dyn Element> {
+    let font_size = appearance.ui_font_size();
+    Flex::row()
+        .with_cross_axis_alignment(CrossAxisAlignment::Center)
+        .with_main_axis_alignment(MainAxisAlignment::SpaceBetween)
+        .with_main_axis_size(MainAxisSize::Max)
+        .with_spacing(12.0)
+        .with_child(
+            Text::new_inline(label.to_owned(), appearance.ui_font_family(), font_size)
+                .with_color(sub_color)
+                .finish(),
+        )
+        .with_child(
+            Shrinkable::new(
+                1.0,
+                Text::new_inline(value, appearance.ui_font_family(), font_size)
+                    .with_color(val_color)
+                    .finish(),
+            )
+            .finish(),
+        )
+        .finish()
+}
+
+fn render_card_shell(body: Box<dyn Element>, appearance: &Appearance) -> Box<dyn Element> {
+    let theme = appearance.theme();
+    Container::new(body)
+        .with_border(Border::all(1.0).with_border_color(theme.outline().into()))
+        .with_corner_radius(CornerRadius::with_all(Radius::Pixels(8.0)))
+        .with_horizontal_padding(18.0)
+        .with_vertical_padding(16.0)
+        .with_margin_bottom(16.0)
+        .finish()
+}
+
+/// Renders the standalone, Warp-Cloud-free Codex & Usage page in Settings.
+pub fn render_codex_full_settings_page(
+    snap: &CodexSnapshot,
+    buttons: CodexSettingsActionButtons,
+    appearance: &Appearance,
+) -> Box<dyn Element> {
+    let theme = appearance.theme();
+    let text_color = theme.active_ui_text_color();
+    let text_solid: ColorU = text_color.into();
+    let sub_color = blended_colors::text_sub(theme, theme.surface_1());
+
+    // ── Card 1: Codex Account & Local CLI Connection ─────────────────────
+    let status_dot_color = if snap.logged_in {
+        ACCENT_GREEN
+    } else if snap.cli_path.is_some() {
+        ACCENT_AMBER
+    } else {
+        ACCENT_RED
+    };
+    let status_dot = ConstrainedBox::new(
+        Container::new(Empty::new().finish())
+            .with_background_color(status_dot_color)
+            .with_corner_radius(CornerRadius::with_all(Radius::Pixels(4.0)))
+            .finish(),
+    )
+    .with_width(8.0)
+    .with_height(8.0)
+    .finish();
+
+    let logo = ConstrainedBox::new(Icon::OpenAILogo.to_warpui_icon(text_color).finish())
+        .with_width(18.0)
+        .with_height(18.0)
+        .finish();
+
+    let header_title = Text::new_inline(
+        format!("Codex Local Backend · {}", snap.plan_badge()),
+        appearance.ui_font_family(),
+        15.0,
+    )
+    .with_color(text_solid)
+    .with_style(Properties::default().weight(Weight::Bold))
+    .finish();
+
+    let mut action_row = Flex::row()
+        .with_cross_axis_alignment(CrossAxisAlignment::Center)
+        .with_spacing(8.0);
+    if snap.logged_in {
+        action_row.add_child(buttons.refresh);
+        action_row.add_child(buttons.manage_usage);
+        action_row.add_child(buttons.sign_out);
+    } else {
+        action_row.add_child(buttons.sign_in);
+        action_row.add_child(buttons.refresh);
+    }
+
+    let card1_header = Flex::row()
+        .with_cross_axis_alignment(CrossAxisAlignment::Center)
+        .with_main_axis_alignment(MainAxisAlignment::SpaceBetween)
+        .with_main_axis_size(MainAxisSize::Max)
+        .with_spacing(12.0)
+        .with_child(
+            Shrinkable::new(
+                1.0,
+                Flex::row()
+                    .with_cross_axis_alignment(CrossAxisAlignment::Center)
+                    .with_spacing(8.0)
+                    .with_child(logo)
+                    .with_child(header_title)
+                    .with_child(status_dot)
+                    .finish(),
+            )
+            .finish(),
+        )
+        .with_child(action_row.finish())
+        .finish();
+
+    let mut card1 = Flex::column().with_spacing(10.0).with_child(card1_header);
+
+    let auth_label = if snap.logged_in {
+        match snap.auth_mode.as_deref() {
+            Some("chatgpt") | None => "Connected via ChatGPT OAuth".to_owned(),
+            Some("apiKey") | Some("apikey") => "Connected via OpenAI API Key".to_owned(),
+            Some(mode) => format!("Connected ({mode})"),
+        }
+    } else if snap.cli_path.is_none() {
+        "Codex CLI not found — install @openai/codex or set WARP_CODEX_BIN".to_owned()
+    } else {
+        "Signed out — click Sign in with ChatGPT to link your Codex plan".to_owned()
+    };
+    card1.add_child(render_kv_row(
+        "Connection",
+        auth_label,
+        appearance,
+        sub_color,
+        text_solid,
+    ));
+
+    if let Some(ref email) = snap.email {
+        card1.add_child(render_kv_row(
+            "Account",
+            format!("{email} ({})", snap.plan_badge()),
+            appearance,
+            sub_color,
+            text_solid,
+        ));
+    }
+
+    let cli_detail = match (&snap.cli_path, &snap.cli_version) {
+        (Some(p), Some(v)) => format!("{v} · {}", p.display()),
+        (Some(p), None) => p.display().to_string(),
+        _ => "Not detected on PATH".to_owned(),
+    };
+    card1.add_child(render_kv_row(
+        "Local binary",
+        cli_detail,
+        appearance,
+        sub_color,
+        text_solid,
+    ));
+
+    if let Some(ref err) = snap.last_error {
+        card1.add_child(
+            Text::new_inline(format!("Note: {err}"), appearance.ui_font_family(), 12.0)
+                .with_color(theme.ansi_fg_yellow())
+                .finish(),
+        );
+    }
+
+    // ── Card 2: Plan & Rolling Rate-Limit Windows ────────────────────────
+    let mut card2 = Flex::column().with_spacing(12.0).with_child(
+        Flex::row()
+            .with_cross_axis_alignment(CrossAxisAlignment::Center)
+            .with_main_axis_alignment(MainAxisAlignment::SpaceBetween)
+            .with_main_axis_size(MainAxisSize::Max)
+            .with_child(
+                Text::new_inline(
+                    "Rolling Quota & Token Usage",
+                    appearance.ui_font_family(),
+                    15.0,
+                )
+                .with_color(text_solid)
+                .with_style(Properties::default().weight(Weight::Bold))
+                .finish(),
+            )
+            .with_child(
+                Text::new_inline(snap.plan_badge(), appearance.ui_font_family(), 13.0)
+                    .with_color(sub_color)
+                    .with_style(Properties::default().weight(Weight::Semibold))
+                    .finish(),
+            )
+            .finish(),
+    );
+
+    if snap.five_hour.is_some() || snap.weekly.is_some() {
+        if let Some(ref five_h) = snap.five_hour {
+            card2.add_child(render_quota_window_row(
+                "5-hour rolling limit",
+                five_h,
+                appearance,
+            ));
+        }
+        if let Some(ref week) = snap.weekly {
+            card2.add_child(render_quota_window_row(
+                "7-day weekly limit",
+                week,
+                appearance,
+            ));
+        }
+    } else {
+        card2.add_child(
+            Text::new(
+                if snap.logged_in {
+                    "Live rate-limit windows will appear here as soon as Codex reports quota data."
+                        .to_owned()
+                } else {
+                    "Sign in with your ChatGPT account above to load your 5-hour and 7-day rolling Codex limits."
+                        .to_owned()
+                },
+                appearance.ui_font_family(),
+                13.0,
+            )
+            .with_color(sub_color)
+            .finish(),
+        );
+    }
+
+    let mut stats_parts = Vec::new();
+    if snap.credits_unlimited {
+        stats_parts.push("Plan credits: Included".to_owned());
+    } else if let Some(ref bal) = snap.credits_balance {
+        stats_parts.push(format!("Credits balance: {bal}"));
+    }
+    if let Some(lt) = snap.lifetime_tokens.filter(|&t| t > 0) {
+        stats_parts.push(format!("Lifetime tokens: {}", lt.separate_with_commas()));
+    }
+    if let Some(pk) = snap.peak_daily_tokens.filter(|&t| t > 0) {
+        stats_parts.push(format!("Peak daily: {}", pk.separate_with_commas()));
+    }
+    if !stats_parts.is_empty() {
+        card2.add_child(
+            Text::new_inline(stats_parts.join("  ·  "), appearance.ui_font_family(), 12.0)
+                .with_color(sub_color)
+                .finish(),
+        );
+    }
+
+    // ── Card 3: Models Exposed by Codex Plan ─────────────────────────────
+    let mut card3 = Flex::column().with_spacing(10.0).with_child(
+        Flex::row()
+            .with_cross_axis_alignment(CrossAxisAlignment::Center)
+            .with_main_axis_alignment(MainAxisAlignment::SpaceBetween)
+            .with_main_axis_size(MainAxisSize::Max)
+            .with_child(
+                Text::new_inline("Models Exposed by Codex", appearance.ui_font_family(), 15.0)
+                    .with_color(text_solid)
+                    .with_style(Properties::default().weight(Weight::Bold))
+                    .finish(),
+            )
+            .with_child(
+                Text::new_inline(
+                    format!("{} available", snap.models.len()),
+                    appearance.ui_font_family(),
+                    12.0,
+                )
+                .with_color(sub_color)
+                .finish(),
+            )
+            .finish(),
+    );
+
+    card3.add_child(
+        Text::new(
+            "Every AI surface in WarpCodex — Agent Mode, Plan Mode, # command search, inline suggestions, passive error fixes, and code review — runs locally over stdio JSON-RPC through codex app-server. Switch models and reasoning effort directly from the prompt toolbar."
+                .to_owned(),
+            appearance.ui_font_family(),
+            12.5,
+        )
+        .with_color(sub_color)
+        .finish(),
+    );
+
+    if !snap.models.is_empty() {
+        let mut chips = Wrap::row().with_spacing(8.0).with_run_spacing(8.0);
+        for m in &snap.models {
+            let label = if m.is_default {
+                format!("{} · default", m.display_name)
+            } else {
+                m.display_name.clone()
+            };
+            chips.add_child(
+                Container::new(
+                    Text::new_inline(label, appearance.ui_font_family(), 12.0)
+                        .with_color(text_solid)
+                        .finish(),
+                )
+                .with_background(theme.surface_2())
+                .with_border(Border::all(1.0).with_border_color(theme.outline().into()))
+                .with_corner_radius(CornerRadius::with_all(Radius::Pixels(6.0)))
+                .with_horizontal_padding(10.0)
+                .with_vertical_padding(5.0)
+                .finish(),
+            );
+        }
+        card3.add_child(chips.finish());
+    }
+
+    Flex::column()
+        .with_cross_axis_alignment(CrossAxisAlignment::Stretch)
+        .with_child(render_card_shell(card1.finish(), appearance))
+        .with_child(render_card_shell(card2.finish(), appearance))
+        .with_child(render_card_shell(card3.finish(), appearance))
+        .finish()
 }
 
 /// Renders the rich Codex CLI status, plan badge, 5h/7d rate-limit windows, and exposed models card

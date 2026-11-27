@@ -72,10 +72,10 @@ impl SettingsWidget for AboutPageWidget {
             "bundled/svg/warp-logo-with-dark-title.svg"
         };
 
-        let version = ChannelState::app_version().unwrap_or("v#.##.###");
+        let version = ChannelState::app_version().unwrap_or(concat!("v", env!("CARGO_PKG_VERSION")));
 
         let version_text = ui_builder
-            .span(version.to_string())
+            .span(format!("WarpCodex {version}"))
             .with_soft_wrap()
             .build()
             .with_margin_top(16.)
@@ -118,9 +118,16 @@ impl SettingsWidget for AboutPageWidget {
                 .with_child(version_row.finish())
                 .with_child(
                     ui_builder
-                        .span("Copyright 2026 Warp")
+                        .span("100% Local Codex CLI Backend · Zero Telemetry")
                         .build()
-                        .with_margin_top(16.)
+                        .with_margin_top(12.)
+                        .finish(),
+                )
+                .with_child(
+                    ui_builder
+                        .span("Open-source fork of warpdotdev/warp (AGPL-3.0 / MIT)")
+                        .build()
+                        .with_margin_top(8.)
                         .finish(),
                 )
                 .finish(),

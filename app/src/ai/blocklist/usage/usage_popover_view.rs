@@ -253,7 +253,7 @@ impl UsagePopoverView {
         let font_family = appearance.ui_font_family();
         let font_size = appearance.ui_font_size();
         let link = Hoverable::new(self.view_account_usage_mouse_state.clone(), move |_state| {
-            Text::new("View account usage".to_string(), font_family, font_size)
+            Text::new("Codex & usage".to_string(), font_family, font_size)
                 .with_color(link_color)
                 .with_selectable(false)
                 .finish()

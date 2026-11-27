@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag to publish (leave empty to build artifact only)"
         required: false
-        default: "v0.1.0"
+        default: "v0.1.1"
   push:
     tags:
       - "v*"

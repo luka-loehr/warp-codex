@@ -64,10 +64,7 @@ const FONT_SIZE: f32 = 12.;
 
 const SAFE_MODE_TITLE: &str = "Secret redaction";
 static SAFE_MODE_DESCRIPTION: LazyLock<&'static str> = LazyLock::new(|| {
-    "When this setting is enabled, Warp will scan blocks, the contents of \
-        Warp Drive objects, and Oz prompts for potential sensitive \
-        information and prevent saving or sending this data to any \
-        servers. You can customize this list via regexes."
+    "When this setting is enabled, WarpCodex scans terminal blocks and prompts for potential sensitive information using customizable regexes."
 });
 const USER_SECRET_REGEX_TITLE: &str = "Custom secret redaction";
 const USER_SECRET_REGEX_DESCRIPTION: &str = "Use regex to define additional secrets or data you'd like to redact. This will take effect \
@@ -219,17 +216,25 @@ impl PrivacyPageView {
     }
 
     fn build_page() -> PageType<Self> {
+        let is_oss = matches!(
+            ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        );
         let mut widgets: Vec<Box<dyn SettingsWidget<View = Self>>> = vec![
             Box::new(SecretRedactionWidget::default()),
             Box::new(AppAnalyticsWidget::default()),
             Box::new(CrashReportsWidget::default()),
-            Box::new(CloudConversationStorageWidget::default()),
         ];
+        if !is_oss {
+            widgets.push(Box::new(CloudConversationStorageWidget::default()));
+        }
         if ContextFlag::NetworkLogConsole.is_enabled() {
             widgets.push(Box::new(NetworkLogWidget::default()));
         }
-        widgets.push(Box::new(DataManagementWidget::default()));
-        widgets.push(Box::new(PrivacyPolicyWidget::default()));
+        if !is_oss {
+            widgets.push(Box::new(DataManagementWidget::default()));
+            widgets.push(Box::new(PrivacyPolicyWidget::default()));
+        }
         PageType::new_uncategorized(widgets, Some(PageTitle::new("Privacy")))
     }
 

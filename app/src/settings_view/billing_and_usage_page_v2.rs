@@ -360,6 +360,9 @@ pub struct BillingAndUsagePageV2View {
     buy_credits_mouse_states: BuyCreditsMouseStates,
     ambient_trial_mouse_states: AmbientTrialMouseStates,
     chatgpt_manage_usage_button: ViewHandle<ActionButton>,
+    codex_sign_in_button: ViewHandle<ActionButton>,
+    codex_refresh_button: ViewHandle<ActionButton>,
+    codex_sign_out_button: ViewHandle<ActionButton>,
     billing_cycle_usage_section: ViewHandle<BillingCycleUsageSectionView>,
 }
 
@@ -383,6 +386,13 @@ impl BillingAndUsagePageV2View {
         ctx.subscribe_to_model(&AIRequestUsageModel::handle(ctx), |_, _, _, ctx| {
             ctx.notify()
         });
+
+        ctx.subscribe_to_model(
+            &crate::ai::codex_local::CodexSyncModel::handle(ctx),
+            |_, _, _, ctx| {
+                ctx.notify();
+            },
+        );
 
         ctx.subscribe_to_model(
             &PricingInfoModel::handle(ctx),
@@ -450,6 +460,25 @@ impl BillingAndUsagePageV2View {
             ctx.add_typed_action_view(BillingCycleUsageSectionView::new);
         let chatgpt_manage_usage_button =
             ctx.add_typed_action_view(|_| chatgpt_manage_usage_button());
+        let codex_sign_in_button = ctx.add_typed_action_view(|_| {
+            ActionButton::new("Sign in with ChatGPT", PrimaryTheme)
+                .with_icon(Icon::OpenAILogo)
+                .on_click(|_ctx| {
+                    crate::ai::codex_local::spawn_background_login();
+                })
+        });
+        let codex_refresh_button = ctx.add_typed_action_view(|_| {
+            ActionButton::new("Refresh", SecondaryTheme)
+                .with_icon(Icon::RefreshCw04)
+                .on_click(|_ctx| {
+                    crate::ai::codex_local::spawn_background_refresh();
+                })
+        });
+        let codex_sign_out_button = ctx.add_typed_action_view(|_| {
+            ActionButton::new("Sign out", SecondaryTheme).on_click(|_ctx| {
+                crate::ai::codex_local::spawn_background_logout();
+            })
+        });
 
         let mut me = Self {
             self_handle: ctx.handle(),
@@ -476,6 +505,9 @@ impl BillingAndUsagePageV2View {
             buy_credits_mouse_states: Default::default(),
             ambient_trial_mouse_states: Default::default(),
             chatgpt_manage_usage_button,
+            codex_sign_in_button,
+            codex_refresh_button,
+            codex_sign_out_button,
             billing_cycle_usage_section,
         };
         me.update_addon_credits_options(ctx);
@@ -2161,6 +2193,12 @@ impl BillingAndUsagePageV2View {
     ) {
         self.addon_credits.purchase_loading = false;
         crate::ai::codex_local::spawn_background_refresh();
+        if matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) {
+            return;
+        }
         std::mem::drop(
             TeamUpdateManager::handle(ctx)
                 .update(ctx, |mgr, ctx| mgr.refresh_workspace_metadata(ctx)),
@@ -2184,8 +2222,23 @@ impl View for BillingAndUsagePageV2View {
 
     fn render(&self, app: &AppContext) -> Box<dyn Element> {
         let appearance = Appearance::as_ref(app);
-        let mut page = Flex::column();
         let codex_snap = crate::ai::codex_local::snapshot();
+        if matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) {
+            return crate::ai::codex_local::ui::render_codex_full_settings_page(
+                &codex_snap,
+                crate::ai::codex_local::ui::CodexSettingsActionButtons {
+                    sign_in: self.codex_sign_in_button.as_ref(app).render(app),
+                    refresh: self.codex_refresh_button.as_ref(app).render(app),
+                    manage_usage: self.chatgpt_manage_usage_button.as_ref(app).render(app),
+                    sign_out: self.codex_sign_out_button.as_ref(app).render(app),
+                },
+                appearance,
+            );
+        }
+        let mut page = Flex::column();
         page.add_child(crate::ai::codex_local::ui::render_codex_settings_overview(
             &codex_snap,
             self.chatgpt_manage_usage_button.as_ref(app).render(app),

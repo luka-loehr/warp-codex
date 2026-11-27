@@ -10057,6 +10057,35 @@ impl Workspace {
             }
         }
 
+        if matches!(
+            ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) {
+            let mut oss_items = vec![
+                MenuItemFields::new("Codex & usage")
+                    .with_on_select_action(WorkspaceAction::ShowSettingsPage(
+                        SettingsSection::BillingAndUsage,
+                    ))
+                    .into_item(),
+                MenuItemFields::new("Settings")
+                    .with_on_select_action(WorkspaceAction::ShowSettings)
+                    .into_item(),
+                MenuItemFields::new("Keyboard shortcuts")
+                    .with_on_select_action(WorkspaceAction::ToggleKeybindingsPage)
+                    .into_item(),
+            ];
+            #[cfg(not(target_family = "wasm"))]
+            {
+                oss_items.push(MenuItem::Separator);
+                oss_items.push(
+                    MenuItemFields::new("View logs")
+                        .with_on_select_action(WorkspaceAction::ViewLogs)
+                        .into_item(),
+                );
+            }
+            return oss_items;
+        }
+
         items.extend([
             MenuItemFields::new("What's new")
                 .with_on_select_action(WorkspaceAction::ViewLatestChangelog)
@@ -24086,7 +24115,13 @@ impl Workspace {
                 entry_focus: GlobalSearchEntryFocus::Results,
             });
         }
-        if *WarpDriveSettings::as_ref(ctx).enable_warp_drive {
+        if (cfg!(test)
+            || !matches!(
+                ChannelState::channel(),
+                warp_core::channel::Channel::Oss
+            ))
+            && *WarpDriveSettings::as_ref(ctx).enable_warp_drive
+        {
             views.push(ToolPanelView::WarpDrive);
         }
         views

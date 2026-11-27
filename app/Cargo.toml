@@ -1,11 +1,11 @@
 [package]
-authors = ["Warp Team <dev@warp.dev>"]
+authors = ["Luka Löhr <luka@lukaloehr.com>", "Warp Team <dev@warp.dev>"]
 default-run = "warp-oss"
-description = "The cloud-backed terminal for individuals and teams"
+description = "Local-first macOS terminal powered by your local Codex CLI"
 edition = "2024"
 autobins = false
 name = "warp"
-version = "0.1.0"
+version = "0.1.1"
 publish.workspace = true
 license.workspace = true
 

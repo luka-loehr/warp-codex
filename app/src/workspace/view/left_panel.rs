@@ -110,10 +110,13 @@ impl ToolPanelView {
                 }
             }
             ToolPanelView::ConversationListView => {
-                if AuthStateProvider::as_ref(app)
+                let requires_warp_account = !matches!(
+                    warp_core::channel::ChannelState::channel(),
+                    warp_core::channel::Channel::Oss
+                ) && AuthStateProvider::as_ref(app)
                     .get()
-                    .is_anonymous_or_logged_out()
-                {
+                    .is_anonymous_or_logged_out();
+                if requires_warp_account {
                     ToolPanelAvailability::RequiresAccount
                 } else if AISettings::as_ref(app).is_conversation_history_available(app) {
                     ToolPanelAvailability::Available

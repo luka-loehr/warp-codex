@@ -339,6 +339,13 @@ impl SettingsWidget for WarpDriveContextWidget {
         "warp drive agent context contents personal team developer workflows environments notebooks environment variables"
     }
 
+    fn should_render(&self, _app: &AppContext) -> bool {
+        !matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        )
+    }
+
     fn render(
         &self,
         view: &Self::View,

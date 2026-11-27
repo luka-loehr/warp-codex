@@ -100,7 +100,15 @@ impl BillingAndUsageDispatchView {
             }
         });
 
-        let page = PageType::new_monolith(BillingAndUsageWidget, Some("Billing and Usage"), true);
+        let title = if matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) {
+            "Codex & Usage"
+        } else {
+            "Billing and Usage"
+        };
+        let page = PageType::new_monolith(BillingAndUsageWidget, Some(title), true);
 
         Self {
             page,
@@ -112,6 +120,12 @@ impl BillingAndUsageDispatchView {
     }
 
     fn use_v2(&self, ctx: &AppContext) -> bool {
+        if matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) {
+            return true;
+        }
         if !FeatureFlag::BillingAndUsagePageV2.is_enabled() {
             return false;
         }
@@ -182,6 +196,12 @@ impl SettingsPageMeta for BillingAndUsageDispatchView {
     }
 
     fn should_render(&self, ctx: &AppContext) -> bool {
+        if matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) {
+            return true;
+        }
         !AuthStateProvider::as_ref(ctx)
             .get()
             .is_anonymous_or_logged_out()
@@ -225,7 +245,7 @@ impl SettingsWidget for BillingAndUsageWidget {
     type View = BillingAndUsageDispatchView;
 
     fn search_terms(&self) -> &str {
-        "plan billing a.i. ai usage limit credits dollars cost spend display unit balance overview"
+        "codex chatgpt login sign in sign out logout oauth account binary cli model models quota rate limit 5h 7d tokens plan billing a.i. ai usage limit credits dollars cost spend display unit balance overview"
     }
 
     fn render(
@@ -234,6 +254,12 @@ impl SettingsWidget for BillingAndUsageWidget {
         appearance: &Appearance,
         app: &AppContext,
     ) -> Box<dyn Element> {
+        if matches!(
+            warp_core::channel::ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        ) {
+            return ChildView::new(&view.v2).finish();
+        }
         let billing_page = if view.use_v2(app) {
             ChildView::new(&view.v2).finish()
         } else {

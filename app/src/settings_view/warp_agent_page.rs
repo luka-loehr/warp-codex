@@ -2349,53 +2349,61 @@ impl WarpAgentPageView {
             ));
         }
 
-        categories.push(Category::new(
-            "Cloud Handoff",
-            vec![
-                Box::new(CloudHandoffWidget::default()),
-                Box::new(AutoHandoffOnSleepWidget::default()),
-                Box::new(AmpersandHandoffWidget::default()),
-            ],
-        ));
+        let is_oss = matches!(
+            ChannelState::channel(),
+            warp_core::channel::Channel::Oss
+        );
 
-        let page_view_handle = ctx.handle();
-        categories.push(Category::with_header(
-            CategoryHeader::new("Custom Inference").with_trailing_element(
-                move |view: &Self, _appearance, app| {
-                    let workspaces = UserWorkspaces::as_ref(app);
-                    let team_scope = workspaces.team_context(&page_view_handle, app);
-                    let shows_custom_inference =
-                        CustomInferenceVisibility::compute(&team_scope, app).show_custom_inference;
-                    if shows_custom_inference {
-                        view.custom_inference_add_button.as_ref(app).render(app)
-                    } else {
-                        Empty::new().finish()
-                    }
-                },
-            ),
-            vec![Box::new(ApiKeysWidget::new(ctx))],
-        ));
+        if !is_oss {
+            categories.push(Category::new(
+                "Cloud Handoff",
+                vec![
+                    Box::new(CloudHandoffWidget::default()),
+                    Box::new(AutoHandoffOnSleepWidget::default()),
+                    Box::new(AmpersandHandoffWidget::default()),
+                ],
+            ));
 
-        categories.push(Category::new(
-            "AWS Bedrock",
-            vec![Box::new(AwsBedrockWidget::new(ctx))],
-        ));
+            let page_view_handle = ctx.handle();
+            categories.push(Category::with_header(
+                CategoryHeader::new("Custom Inference").with_trailing_element(
+                    move |view: &Self, _appearance, app| {
+                        let workspaces = UserWorkspaces::as_ref(app);
+                        let team_scope = workspaces.team_context(&page_view_handle, app);
+                        let shows_custom_inference =
+                            CustomInferenceVisibility::compute(&team_scope, app)
+                                .show_custom_inference;
+                        if shows_custom_inference {
+                            view.custom_inference_add_button.as_ref(app).render(app)
+                        } else {
+                            Empty::new().finish()
+                        }
+                    },
+                ),
+                vec![Box::new(ApiKeysWidget::new(ctx))],
+            ));
 
-        categories.push(Category::new(
-            "Gemini Enterprise",
-            vec![Box::new(GeminiEnterpriseWidget::new(ctx))],
-        ));
+            categories.push(Category::new(
+                "AWS Bedrock",
+                vec![Box::new(AwsBedrockWidget::new(ctx))],
+            ));
 
-        if FeatureFlag::CustomModelRouters.is_enabled() {
-            #[allow(clippy::vec_init_then_push)]
-            let custom_router_widgets: Vec<Box<dyn SettingsWidget<View = Self>>> = {
-                let mut widgets: Vec<Box<dyn SettingsWidget<View = Self>>> = Vec::new();
-                #[cfg(feature = "local_fs")]
-                widgets.push(Box::new(AddCustomRouterWidget));
-                widgets.push(Box::new(CustomModelRoutersWidget));
-                widgets
-            };
-            categories.push(Category::new("Custom Routers", custom_router_widgets));
+            categories.push(Category::new(
+                "Gemini Enterprise",
+                vec![Box::new(GeminiEnterpriseWidget::new(ctx))],
+            ));
+
+            if FeatureFlag::CustomModelRouters.is_enabled() {
+                #[allow(clippy::vec_init_then_push)]
+                let custom_router_widgets: Vec<Box<dyn SettingsWidget<View = Self>>> = {
+                    let mut widgets: Vec<Box<dyn SettingsWidget<View = Self>>> = Vec::new();
+                    #[cfg(feature = "local_fs")]
+                    widgets.push(Box::new(AddCustomRouterWidget));
+                    widgets.push(Box::new(CustomModelRoutersWidget));
+                    widgets
+                };
+                categories.push(Category::new("Custom Routers", custom_router_widgets));
+            }
         }
 
         categories.push(Category::new(
@@ -2404,19 +2412,22 @@ impl WarpAgentPageView {
         ));
 
         #[cfg_attr(not(feature = "local_fs"), allow(unused_mut))]
-        let mut other_widgets: Vec<Box<dyn SettingsWidget<View = Self>>> = vec![
-            Box::new(ShowOzUpdatesInZeroStateWidget::default()),
-            Box::new(UseAgentFooterWidget::default()),
+        let mut other_widgets: Vec<Box<dyn SettingsWidget<View = Self>>> = Vec::new();
+        if !is_oss {
+            other_widgets.push(Box::new(ShowOzUpdatesInZeroStateWidget::default()));
+        }
+        other_widgets.extend([
+            Box::new(UseAgentFooterWidget::default()) as Box<dyn SettingsWidget<View = Self>>,
             Box::new(AgentToolbarLayoutEditorWidget),
             Box::new(ShowConversationHistoryWidget::default()),
             Box::new(ThinkingDisplayModeWidget),
             Box::new(OrchestrationMessageDisplayModeWidget),
-        ];
+        ]);
         #[cfg(feature = "local_fs")]
         other_widgets.push(Box::new(ConversationLayoutPreferenceWidget));
         categories.push(Category::new("Other", other_widgets));
 
-        if FeatureFlag::AgentModeComputerUse.is_enabled() {
+        if !is_oss && FeatureFlag::AgentModeComputerUse.is_enabled() {
             categories.push(Category::new(
                 "Experimental",
                 vec![Box::new(CloudAgentComputerUseWidget::default())],
@@ -2425,9 +2436,10 @@ impl WarpAgentPageView {
 
         let global_ai_switch_state = SwitchStateHandle::default();
         let global_ai_sign_up_button = MouseStateHandle::default();
+        let page_title = if is_oss { "AI & Agent" } else { "Warp Agent" };
         PageType::new_categorized(
             categories,
-            Some(PageTitle::new("Warp Agent").with_trailing_element(
+            Some(PageTitle::new(page_title).with_trailing_element(
                 move |_view, appearance, app| {
                     render_global_ai_toggle(
                         &global_ai_switch_state,
@@ -3222,7 +3234,10 @@ fn render_global_ai_toggle(
     let is_ai_disabled_due_to_remote_session_org_policy =
         AISettings::as_ref(app).is_ai_disabled_due_to_remote_session_org_policy(app);
 
-    let is_anonymous = AuthStateProvider::as_ref(app)
+    let is_anonymous = !matches!(
+        ChannelState::channel(),
+        warp_core::channel::Channel::Oss
+    ) && AuthStateProvider::as_ref(app)
         .get()
         .is_anonymous_or_logged_out();
 
@@ -3354,6 +3369,12 @@ fn is_shared_block_title_generation_toggleable(
     view_handle: &WeakViewHandle<WarpAgentPageView>,
     app: &AppContext,
 ) -> bool {
+    if matches!(
+        ChannelState::channel(),
+        warp_core::channel::Channel::Oss
+    ) {
+        return false;
+    }
     FeatureFlag::SharedBlockTitleGeneration.is_enabled()
         && AISettings::as_ref(app)
             .shared_block_title_generation_enabled_internal

@@ -15,29 +15,13 @@ use crate::view_components::action_button::{ActionButton, SecondaryTheme};
 
 /// The button that opens OpenAI's usage page from [`render_chatgpt_usage_card`].
 pub(crate) fn chatgpt_manage_usage_button() -> ActionButton {
-    ActionButton::new("Sign in / Manage Codex", SecondaryTheme)
+    ActionButton::new("ChatGPT usage", SecondaryTheme)
         .with_icon(Icon::LinkExternal)
         .on_click(|ctx| {
-            if crate::ai::codex_local::snapshot().logged_in {
-                crate::ai::codex_local::spawn_background_refresh();
-                ctx.dispatch_typed_action(BillingAndUsagePageAction::OpenUrl(HyperlinkUrl {
-                    url: CHATGPT_USAGE_URL.to_owned(),
-                }));
-            } else {
-                std::thread::Builder::new()
-                    .name("warp-codex-oauth".to_owned())
-                    .spawn(|| {
-                        if let Ok(url) =
-                            futures::executor::block_on(crate::ai::codex_local::start_chatgpt_login())
-                        {
-                            #[cfg(target_os = "macos")]
-                            let _ = std::process::Command::new("/usr/bin/open").arg(&url).spawn();
-                            #[cfg(not(target_os = "macos"))]
-                            let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
-                        }
-                    })
-                    .ok();
-            }
+            crate::ai::codex_local::spawn_background_refresh();
+            ctx.dispatch_typed_action(BillingAndUsagePageAction::OpenUrl(HyperlinkUrl {
+                url: CHATGPT_USAGE_URL.to_owned(),
+            }));
         })
 }
 
