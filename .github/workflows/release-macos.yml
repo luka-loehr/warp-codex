@@ -1,0 +1,121 @@
+name: Build & Release WarpCodex (macOS arm64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (leave empty to build artifact only)"
+        required: false
+        default: "v0.1.0"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  MACOSX_DEPLOYMENT_TARGET: "10.14"
+
+jobs:
+  macos-arm64:
+    name: Build WarpCodex.app & DMG (Apple Silicon)
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository with Git LFS
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Ensure Git LFS models are materialized
+        run: |
+          git lfs install
+          git lfs pull
+
+      - name: Install macOS build dependencies
+        run: |
+          brew install jq pkgconf llvm protobuf create-dmg
+          xcodebuild -downloadComponent MetalToolchain || true
+
+      - name: Install pinned Rust toolchain
+        run: |
+          TOOLCHAIN="$(grep '^channel' rust-toolchain.toml | head -n1 | cut -d'"' -f2)"
+          rustup toolchain install "$TOOLCHAIN" --profile minimal --component clippy
+          rustup default "$TOOLCHAIN"
+          rustup target add aarch64-apple-darwin
+
+      - name: Cache Cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cargo/bin/cargo-bundle
+            target/
+          key: macos-15-aarch64-warpcodex-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            macos-15-aarch64-warpcodex-
+
+      - name: Install cargo-bundle 0.11.0
+        run: |
+          if ! cargo bundle --version 2>/dev/null | grep -q "0.11.0"; then
+            cargo install cargo-bundle --version 0.11.0 --locked
+          fi
+
+      - name: Run codex_local unit tests
+        run: |
+          CARGO_PROFILE_TEST_DEBUG=0 cargo test -p warp --lib ai::codex_local -- --nocapture
+
+      - name: Bundle WarpCodex.app & WarpCodex.dmg
+        run: |
+          export PATH="/opt/homebrew/opt/llvm/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"
+          NO_LICENSES=1 ./script/bundle --channel oss --arch aarch64 --selfsign
+          ls -lh target/release-lto/bundle/osx/
+
+      - name: Smoke-test bundled WarpCodex.app binary
+        run: |
+          APP_PATH="target/release-lto/bundle/osx/WarpCodex.app"
+          test -d "$APP_PATH"
+          test -x "$APP_PATH/Contents/MacOS/warp-oss"
+          plutil -lint "$APP_PATH/Contents/Info.plist"
+          "$APP_PATH/Contents/MacOS/warp-oss" --help | head -n 30
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" target/release-lto/bundle/osx/WarpCodex-macos-arm64.app.zip
+          cp target/release-lto/bundle/osx/WarpCodex.dmg target/release-lto/bundle/osx/WarpCodex-macos-arm64.dmg
+          shasum -a 256 target/release-lto/bundle/osx/WarpCodex-macos-arm64.dmg target/release-lto/bundle/osx/WarpCodex-macos-arm64.app.zip > target/release-lto/bundle/osx/SHA256SUMS.txt
+          cat target/release-lto/bundle/osx/SHA256SUMS.txt
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: WarpCodex-macos-arm64
+          path: |
+            target/release-lto/bundle/osx/WarpCodex-macos-arm64.dmg
+            target/release-lto/bundle/osx/WarpCodex-macos-arm64.app.zip
+            target/release-lto/bundle/osx/SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
+            TAG="${{ inputs.tag }}"
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" \
+              target/release-lto/bundle/osx/WarpCodex-macos-arm64.dmg \
+              target/release-lto/bundle/osx/WarpCodex-macos-arm64.app.zip \
+              target/release-lto/bundle/osx/SHA256SUMS.txt \
+              --clobber
+          else
+            gh release create "$TAG" \
+              target/release-lto/bundle/osx/WarpCodex-macos-arm64.dmg \
+              target/release-lto/bundle/osx/WarpCodex-macos-arm64.app.zip \
+              target/release-lto/bundle/osx/SHA256SUMS.txt \
+              --title "WarpCodex $TAG" \
+              --notes "Local-first macOS Apple Silicon build of WarpCodex backed by your local Codex CLI (codex app-server). Zero telemetry, zero Warp cloud."
+          fi
